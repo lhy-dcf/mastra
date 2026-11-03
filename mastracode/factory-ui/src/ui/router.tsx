@@ -81,6 +81,15 @@ function RootLanding() {
   return <Navigate to={`/factories/${firstFactory.id}`} replace state={state} />;
 }
 
+/** The retired Review board's links (`/review?item=…`) open Work filtered to pull requests, keeping their query. */
+function RetiredReviewBoardRedirect() {
+  const { search } = useLocation();
+  const params = new URLSearchParams(search);
+  if (!params.getAll('source').includes(PULL_REQUEST_SOURCE_FILTER))
+    params.append('source', PULL_REQUEST_SOURCE_FILTER);
+  return <Navigate to={`../work?${params}`} relative="path" replace />;
+}
+
 function FactoryHomeRedirect() {
   const { factoryId } = useParams<{ factoryId: string }>();
   return <FactoryBoardLanding factoryId={factoryId} />;
@@ -170,10 +179,7 @@ export function createAppRoutes(): RouteObject[] {
                     { path: 'new-factory', element: <CreateFactoryPage /> },
                     { path: 'work', element: <WorkBoardPage /> },
                     // The Review board was retired: its pull requests live on Work.
-                    {
-                      path: 'review',
-                      element: <Navigate to={`../work?source=${PULL_REQUEST_SOURCE_FILTER}`} relative="path" replace />,
-                    },
+                    { path: 'review', element: <RetiredReviewBoardRedirect /> },
                     { path: 'boards/:boardId', element: <CustomBoardPage /> },
                     { path: 'activity', element: <FactoryHomeRedirect /> },
                     { path: 'overview', element: <FactoryHomeRedirect /> },
