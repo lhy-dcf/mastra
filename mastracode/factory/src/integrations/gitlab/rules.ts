@@ -4,7 +4,7 @@ import {
   eventBoardId,
   isTerminalWorkItem,
   cardOwnsBranch,
-  hasBuilderSession,
+  workStarted,
   newestOwnedOpenPullRequestNumber,
   pullRequestSources,
   rulePhaseField,
@@ -387,7 +387,7 @@ export class GitLabRules {
               item.externalSource?.integrationId === 'gitlab' &&
               item.externalSource.externalId === key &&
               eligibleHome(item) &&
-              !hasBuilderSession(item),
+              !workStarted(item),
           );
           if (card) {
             home = { card, reason: 'closes' };
