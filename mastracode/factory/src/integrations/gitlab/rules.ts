@@ -3,6 +3,7 @@ import {
   boardForWorkItem,
   eventBoardId,
   isTerminalWorkItem,
+  cardOwnsBranch,
   hasBuilderSession,
   newestOwnedOpenPullRequestNumber,
   pullRequestSources,
@@ -525,7 +526,7 @@ export class GitLabRules {
     const trackedItem =
       home?.reason === 'closes'
         ? home.card
-        : attachedItem && attachedItem.id !== authoringItem?.id
+        : attachedItem
           ? attachedItem
           : branchOwners.length === 1
             ? authoringItem
@@ -544,9 +545,7 @@ export class GitLabRules {
         // self-review and merge request.
         ownedByCard:
           home?.reason !== 'closes' &&
-          (trackedItem.id !== attachedItem?.id ||
-            (headBranch !== '' &&
-              Object.values(trackedItem.sessions).some(session => session.branch === headBranch))),
+          (trackedItem.id !== attachedItem?.id || cardOwnsBranch(trackedItem, headBranch)),
       });
     }
     if (results.some(result => result.status === 'committed')) return { status: 'committed' };
