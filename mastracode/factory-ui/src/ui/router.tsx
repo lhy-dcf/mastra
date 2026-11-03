@@ -16,7 +16,8 @@ import type { RouteObject } from 'react-router';
 
 import { FactoryBoardLanding } from './domains/factory/components/FactoryBoardLanding';
 import { AuthPendingSkeleton, RootGuards } from './domains/auth/components/RootGuards';
-import { CustomBoardPage, ReviewBoardPage, WorkBoardPage } from './pages/BoardPage';
+import { PULL_REQUEST_SOURCE_FILTER } from './domains/factory/boardSourceFilters';
+import { CustomBoardPage, WorkBoardPage } from './pages/BoardPage';
 
 import { useFactoriesQuery } from '../hooks/useFactories';
 import { useServerFeatures } from '../hooks/useServerFeatures';
@@ -168,7 +169,11 @@ export function createAppRoutes(): RouteObject[] {
                     { path: 'new', element: <NewPage /> },
                     { path: 'new-factory', element: <CreateFactoryPage /> },
                     { path: 'work', element: <WorkBoardPage /> },
-                    { path: 'review', element: <ReviewBoardPage /> },
+                    // The Review board was retired: its pull requests live on Work.
+                    {
+                      path: 'review',
+                      element: <Navigate to={`../work?source=${PULL_REQUEST_SOURCE_FILTER}`} relative="path" replace />,
+                    },
                     { path: 'boards/:boardId', element: <CustomBoardPage /> },
                     { path: 'activity', element: <FactoryHomeRedirect /> },
                     { path: 'overview', element: <FactoryHomeRedirect /> },

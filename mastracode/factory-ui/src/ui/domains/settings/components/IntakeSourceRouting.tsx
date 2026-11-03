@@ -149,7 +149,7 @@ export function BoardPicker({
 }) {
   const catalog = useBoardCatalog(factoryProjectId);
 
-  const boards = (catalog.data ?? []).filter(candidate => candidate.id !== 'review');
+  const boards = catalog.data ?? [];
   const current = boards.find(candidate => candidate.id === board);
   const label = catalog.isError
     ? 'Boards unavailable'
