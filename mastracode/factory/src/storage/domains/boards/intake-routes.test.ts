@@ -7,7 +7,13 @@ import { LibSQLFactoryStorage } from '@mastra/libsql';
 import { PgFactoryStorage } from '@mastra/pg';
 import { describe, expect, it, onTestFinished } from 'vitest';
 
-import { DEFAULT_INTAKE_ROUTE, MAX_INTAKE_ROUTES, PULL_REQUEST_INTAKE_ROUTE, StoredBoardsStorage } from './base.js';
+import {
+  CLOSES_ISSUE_INTAKE_ROUTE,
+  DEFAULT_INTAKE_ROUTE,
+  MAX_INTAKE_ROUTES,
+  PULL_REQUEST_INTAKE_ROUTE,
+  StoredBoardsStorage,
+} from './base.js';
 import type { StoredBoardScope, StoredIntakeRouteInput } from './base.js';
 
 const postgresUrl = process.env.FACTORY_TEST_POSTGRES_URL;
@@ -69,29 +75,38 @@ describe.each(['libsql', ...(postgresUrl ? ['postgres'] : [])])('intake routes o
   it('gives a new project the default routes, once, and never brings one back once deleted', async () => {
     const { boards, scope } = await setup({ seeded: true });
 
-    const [seeded, pullRequests, ...rest] = await boards.listIntakeRoutes(scope);
+    const [closesIssue, seeded, pullRequests, ...rest] = await boards.listIntakeRoutes(scope);
     expect(rest).toEqual([]);
-    expect(seeded).toMatchObject({
-      name: DEFAULT_INTAKE_ROUTE.name,
+    // Its condition stands on its own (trusted authors only), so it can go first.
+    expect(closesIssue).toMatchObject({
+      name: CLOSES_ISSUE_INTAKE_ROUTE.name,
       enabled: true,
       position: 0,
-      when: DEFAULT_INTAKE_ROUTE.when,
-      target: { boardKey: 'work', phaseKey: 'intake' },
+      when: CLOSES_ISSUE_INTAKE_ROUTE.when,
+      target: { boardKey: 'work', phaseKey: 'pr-review', joinClosedIssue: true },
       revision: 1,
       createdBy: 'factory',
     });
-    // Outside authors come first, so their pull requests still wait in Intake.
-    expect(pullRequests).toMatchObject({
-      name: PULL_REQUEST_INTAKE_ROUTE.name,
+    expect(seeded).toMatchObject({
+      name: DEFAULT_INTAKE_ROUTE.name,
+      enabled: true,
       position: 1,
-      when: PULL_REQUEST_INTAKE_ROUTE.when,
-      target: { boardKey: 'work', phaseKey: 'pr-review' },
+      when: DEFAULT_INTAKE_ROUTE.when,
+      target: { boardKey: 'work', phaseKey: 'intake', joinClosedIssue: false },
+      revision: 1,
       createdBy: 'factory',
     });
-    expect(await boards.listIntakeRoutes(scope)).toEqual([seeded, pullRequests]);
+    // Outside authors come before it, so their pull requests still wait in Intake.
+    expect(pullRequests).toMatchObject({
+      name: PULL_REQUEST_INTAKE_ROUTE.name,
+      position: 2,
+      when: PULL_REQUEST_INTAKE_ROUTE.when,
+      target: { boardKey: 'work', phaseKey: 'pr-review', joinClosedIssue: false },
+      createdBy: 'factory',
+    });
+    expect(await boards.listIntakeRoutes(scope)).toEqual([closesIssue, seeded, pullRequests]);
 
-    await boards.deleteIntakeRoute(scope, seeded!.id, { expectedRevision: 1 });
-    await boards.deleteIntakeRoute(scope, pullRequests!.id, { expectedRevision: 2 });
+    await emptyProject(boards, scope);
     expect(await boards.listIntakeRoutes(scope)).toEqual([]);
     expect(await boards.listIntakeRoutes(scope)).toEqual([]);
   });
@@ -99,7 +114,12 @@ describe.each(['libsql', ...(postgresUrl ? ['postgres'] : [])])('intake routes o
   it("puts a new project's first route after the default routes", async () => {
     const { boards, scope } = await setup({ seeded: true });
     await boards.createIntakeRoute(scope, route('Mine'), 'u');
-    expect(await names(boards, scope)).toEqual([DEFAULT_INTAKE_ROUTE.name, PULL_REQUEST_INTAKE_ROUTE.name, 'Mine']);
+    expect(await names(boards, scope)).toEqual([
+      CLOSES_ISSUE_INTAKE_ROUTE.name,
+      DEFAULT_INTAKE_ROUTE.name,
+      PULL_REQUEST_INTAKE_ROUTE.name,
+      'Mine',
+    ]);
   });
 
   it('seeds the default routes once when two clients read a new project at once', async () => {
@@ -113,12 +133,18 @@ describe.each(['libsql', ...(postgresUrl ? ['postgres'] : [])])('intake routes o
       other.createIntakeRoute(fresh, route('Mine'), 'u'),
     ]);
 
-    expect(await names(boards, fresh)).toEqual([DEFAULT_INTAKE_ROUTE.name, PULL_REQUEST_INTAKE_ROUTE.name, 'Mine']);
+    expect(await names(boards, fresh)).toEqual([
+      CLOSES_ISSUE_INTAKE_ROUTE.name,
+      DEFAULT_INTAKE_ROUTE.name,
+      PULL_REQUEST_INTAKE_ROUTE.name,
+      'Mine',
+    ]);
   });
 
   /**
    * The state a project set up before the pull request route existed is in: the lock row lists no
-   * defaults (`seeded_defaults` null) and the project has only the outside-authors route.
+   * defaults (`seeded_defaults` null) and the project has only the outside-authors route, written
+   * before routes could join a card (`join_closed_issue` unset).
    */
   async function projectFromBeforePullRequestRoute(setupResult: Awaited<ReturnType<typeof setup>>) {
     const { storage, boards, scope } = setupResult;
@@ -126,9 +152,11 @@ describe.each(['libsql', ...(postgresUrl ? ['postgres'] : [])])('intake routes o
     await boards.listIntakeRoutes(scope);
     await storage.ops.updateMany('factory_intake_route_locks', where, { seeded_defaults: null });
     await storage.ops.deleteMany('factory_intake_routes', { ...where, name: PULL_REQUEST_INTAKE_ROUTE.name });
+    await storage.ops.deleteMany('factory_intake_routes', { ...where, name: CLOSES_ISSUE_INTAKE_ROUTE.name });
+    await storage.ops.updateMany('factory_intake_routes', where, { position: 0, join_closed_issue: null });
   }
 
-  it('adds the pull request route once, at the end, to a project set up before it existed', async () => {
+  it('adds each route added since once: the pull request route at the end, the closing-issue route first', async () => {
     const project = await setup({ seeded: true });
     const { boards, scope } = project;
     await projectFromBeforePullRequestRoute(project);
@@ -150,12 +178,19 @@ describe.each(['libsql', ...(postgresUrl ? ['postgres'] : [])])('intake routes o
       updated_at: new Date(),
     });
 
-    expect(await names(boards, scope)).toEqual([DEFAULT_INTAKE_ROUTE.name, 'Mine', PULL_REQUEST_INTAKE_ROUTE.name]);
-    expect(await names(boards, scope)).toEqual([DEFAULT_INTAKE_ROUTE.name, 'Mine', PULL_REQUEST_INTAKE_ROUTE.name]);
+    const order = [CLOSES_ISSUE_INTAKE_ROUTE.name, DEFAULT_INTAKE_ROUTE.name, 'Mine', PULL_REQUEST_INTAKE_ROUTE.name];
+    expect(await names(boards, scope)).toEqual(order);
+    expect(await names(boards, scope)).toEqual(order);
+    // A route written before the column reads as one that places a card.
+    expect((await boards.listIntakeRoutes(scope))[1]!.target).toEqual({
+      boardKey: 'work',
+      phaseKey: 'intake',
+      joinClosedIssue: false,
+    });
 
     const added = (await boards.listIntakeRoutes(scope)).at(-1)!;
     await boards.deleteIntakeRoute(scope, added.id, { expectedRevision: added.revision });
-    expect(await names(boards, scope)).toEqual([DEFAULT_INTAKE_ROUTE.name, 'Mine']);
+    expect(await names(boards, scope)).toEqual(order.slice(0, -1));
   });
 
   it('adds the pull request route once when two clients read an older project at once', async () => {
@@ -171,7 +206,10 @@ describe.each(['libsql', ...(postgresUrl ? ['postgres'] : [])])('intake routes o
 
     const listed = await names(project.boards, project.scope);
     expect(listed.filter(name => name === PULL_REQUEST_INTAKE_ROUTE.name)).toHaveLength(1);
-    expect(listed.toSorted()).toEqual([DEFAULT_INTAKE_ROUTE.name, 'Mine', PULL_REQUEST_INTAKE_ROUTE.name].toSorted());
+    expect(listed[0]).toBe(CLOSES_ISSUE_INTAKE_ROUTE.name);
+    expect(listed.toSorted()).toEqual(
+      [CLOSES_ISSUE_INTAKE_ROUTE.name, DEFAULT_INTAKE_ROUTE.name, 'Mine', PULL_REQUEST_INTAKE_ROUTE.name].toSorted(),
+    );
   });
 
   it('reads back every field of a route, and fills the defaults', async () => {
@@ -223,7 +261,7 @@ describe.each(['libsql', ...(postgresUrl ? ['postgres'] : [])])('intake routes o
   it('keeps a board-only target without a phase', async () => {
     const { boards, scope } = await setup();
     const created = await boards.createIntakeRoute(scope, route('Docs', { target: { boardKey: 'docs' } }), 'u');
-    expect(created.target).toEqual({ boardKey: 'docs', phaseKey: null });
+    expect(created.target).toEqual({ boardKey: 'docs', phaseKey: null, joinClosedIssue: false });
   });
 
   it('keeps two projects apart', async () => {

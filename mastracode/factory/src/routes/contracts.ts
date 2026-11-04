@@ -4,7 +4,7 @@ import { validateSkillContent } from '@mastra/core/skills';
 import { z } from 'zod';
 
 import { storedBoardDefinitionSchema, storedBoardInputSchema, storedPhaseInputSchema } from '../boards/stored-board.js';
-import { cardRuleGroupSchema } from '../rules/rule-group.js';
+import { cardRuleGroupSchema, intakeRouteRuleGroupSchema } from '../rules/rule-group.js';
 import { FACTORY_ROLE_STAGES } from '../rules/types.js';
 import { BOARD_IDENTIFIER_RE, MAX_BOARD_IDENTIFIER_LENGTH } from '../rules/validation.js';
 import { MAX_INTAKE_ROUTES } from '../storage/domains/boards/base.js';
@@ -99,13 +99,18 @@ const intakeRouteTargetSchema = z
     boardKey: intakeRouteIdentifierSchema,
     /** Unset lands the card in the board's first phase. */
     phaseKey: intakeRouteIdentifierSchema.nullable().optional(),
+    /**
+     * File a pull request on the card of the issue it closes (on `boardKey`) instead of a new card;
+     * that card moves to `phaseKey` when its board allows it. Matches no other arrival.
+     */
+    joinClosedIssue: z.boolean().optional(),
   })
   .strict();
 const intakeRouteFields = {
   name: nonEmptyTrimmed(120),
   enabled: z.boolean(),
   /** Which new cards the route applies to; null matches every card. */
-  when: cardRuleGroupSchema.nullable(),
+  when: intakeRouteRuleGroupSchema.nullable(),
   /** Where matching new cards land. */
   target: intakeRouteTargetSchema,
 };
@@ -146,8 +151,8 @@ const intakeRouteSchema = z.object({
   enabled: z.boolean(),
   /** 0 is evaluated first. */
   position: z.number().int(),
-  when: cardRuleGroupSchema.nullable(),
-  target: z.object({ boardKey: z.string(), phaseKey: z.string().nullable() }),
+  when: intakeRouteRuleGroupSchema.nullable(),
+  target: z.object({ boardKey: z.string(), phaseKey: z.string().nullable(), joinClosedIssue: z.boolean() }),
   /** Send it back as `expectedRevision` when editing or deleting. */
   revision: z.number().int(),
   createdBy: z.string(),

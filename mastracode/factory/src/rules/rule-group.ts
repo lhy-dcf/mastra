@@ -111,6 +111,19 @@ export function ruleGroupSchema(fields: readonly [string, ...string[]]): z.ZodTy
 
 export const cardRuleGroupSchema = ruleGroupSchema(CARD_RULE_FIELDS);
 
+/**
+ * Facts an intake route can also test about a pull request that closes an issue (see
+ * `closedIssueRuleFacts`). Only arrivals have them, so phase conditions can't name them.
+ */
+export const INTAKE_ROUTE_RULE_FIELDS = [
+  ...CARD_RULE_FIELDS,
+  'pullRequest.closesIssue',
+  'closedIssue.phase',
+  'closedIssue.hasPullRequest',
+] as const;
+
+export const intakeRouteRuleGroupSchema = ruleGroupSchema(INTAKE_ROUTE_RULE_FIELDS);
+
 function isGroup(member: RuleCondition | RuleGroup): member is RuleGroup {
   return 'conditions' in member;
 }

@@ -114,7 +114,10 @@ export class IntakeRouteRoutes extends Route<IntakeRouteRoutesDeps> {
   }
 
   /** Refuses a target that isn't an installed board and a phase new cards can land in. */
-  async #checkTarget(scope: Resolved, target: { boardKey: string; phaseKey?: string | null } | undefined) {
+  async #checkTarget(
+    scope: Resolved,
+    target: { boardKey: string; phaseKey?: string | null; joinClosedIssue?: boolean } | undefined,
+  ) {
     if (!target) return;
     const problem = intakeTargetProblem(await this.#registry(scope), target);
     if (problem) throw new Refusal(422, { error: problem.code, message: problem.message });
