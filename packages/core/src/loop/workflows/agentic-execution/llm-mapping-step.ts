@@ -389,9 +389,16 @@ export function createLLMMappingStep<Tools extends ToolSet = ToolSet, OUTPUT = u
           }
         }
 
+        // A failed tool call normally re-enters the loop so the model can correct it. A
+        // truncated step is the exception: `length` terminates the agentic loop (#15717),
+        // because re-sending the same request reproduces the truncation. Letting the tool
+        // error override that reason turns a terminal truncation into another model request
+        // and reports `stop` instead of `length` (@see issue #29518). The failed result is
+        // still committed above, so the model sees it on the next turn.
         if (
           errorResults?.length > 0 &&
           !hasPendingHITL &&
+          initialResult.stepResult.reason !== 'length' &&
           !(rest.options?.abortSignal?.aborted && inputData.some(toolCall => toolCall.aborted))
         ) {
           // Continue the loop — the error messages are already in the messageList,
