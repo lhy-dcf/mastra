@@ -1,5 +1,43 @@
 # @mastra/temporal
 
+## 0.6.0-alpha.1
+
+### Patch Changes
+
+- Fixed `run.start()` results for failed runs. Before, every failed run returned `status: 'failed'`, `steps: {}` and Temporal's `WorkflowFailedError`. A failed run now returns the same status, error, tripwire and step records as on Mastra's default workflow engine. Fixes [#28754](https://github.com/mastra-ai/mastra/issues/28754). ([#29169](https://github.com/mastra-ai/mastra/pull/29169))
+
+  - `error` is the error the step threw, with its own fields such as `code`.
+  - `steps` has a record for each step that ran, including the failed step and every branch of a `.parallel()`. As in successful Temporal results, it has no `input` record.
+  - A step that throws a `TripWire`, as an agent step does when a guardrail aborts, returns `status: 'tripwire'` with `tripwire: { reason, retry, metadata, processorId }`.
+
+  Restart your Workers to pick up the change. Runs that fail on a Worker running an older version return the same result as before.
+
+  **Changes if you read Temporal failures directly**
+
+  The run still fails in Temporal, but with a different failure chain. If you call `handle.result()` with the Temporal client, `WorkflowFailedError.cause` is now an `ApplicationFailure` carrying the step's error. The step's `ActivityFailure`, including input and request context validation failures, is one level lower in its `cause`. Code that checks `cause instanceof ActivityFailure` or the top-level failure `type` needs to look one level deeper:
+
+  ```ts
+  // Before
+  if (error.cause instanceof ActivityFailure) {
+    // handle the step's failure
+  }
+
+  // After
+  if (error.cause instanceof ApplicationFailure && error.cause.cause instanceof ActivityFailure) {
+    // handle the step's failure
+  }
+  ```
+
+  **`.parallel()` waits for every branch**
+
+  When a branch fails, the run now waits for the other branches to finish before it fails, as on the default engine. Before, it failed as soon as one branch failed. The other branches run to completion, side effects included. If a branch retries indefinitely, the run doesn't fail until that branch stops. Set `retry` in `init()` to limit retries.
+
+- Fixed Temporal workflow results to include the workflow input under `result.steps.input` again, matching a local run. `run.start()` includes it for successful, failed, tripwire and suspended results, and `run.resume()` includes it for suspended and successful results. ([#29506](https://github.com/mastra-ai/mastra/pull/29506))
+
+- Updated dependencies [[`a0068a9`](https://github.com/mastra-ai/mastra/commit/a0068a9ad1fb0a31ae60a07ecbeae41a32ea4081), [`8960f55`](https://github.com/mastra-ai/mastra/commit/8960f55dec7ebf39b460ee8664509d2924065b86), [`cd369c3`](https://github.com/mastra-ai/mastra/commit/cd369c334cf5af81597d7d61e7419b390f92365b), [`f94beac`](https://github.com/mastra-ai/mastra/commit/f94beac86288cb94e2973c9ed492c8f0d68b919d), [`f7320ab`](https://github.com/mastra-ai/mastra/commit/f7320abd205aa865e3ae467b7bf82373af30a6aa)]:
+  - @mastra/core@1.83.0-alpha.1
+  - @mastra/deployer@1.83.0-alpha.1
+
 ## 0.6.0-alpha.0
 
 ### Minor Changes

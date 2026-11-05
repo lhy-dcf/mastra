@@ -1,5 +1,82 @@
 # @mastra/playground-ui
 
+## 69.0.0-alpha.1
+
+### Minor Changes
+
+- Improved the Knowledge explorer. The graph now fills the explorer, with the page tree and the selected page's details in panels that slide in over its edges instead of squeezing it. Graph and Page switch with tabs, the graph's controls use the shared button group, and fits, the legend and the zoom controls stay clear of both panels. Narrow screens keep the stacked layout. ([#29495](https://github.com/mastra-ai/mastra/pull/29495))
+
+  `KnowledgePageExplorer` also takes two optional props. `toolbarEnd` adds your own actions to the end of the toolbar, and `flush` drops the graph's border when the page around it already frames it.
+
+  ```tsx
+  <KnowledgePageExplorer
+    graph={graph}
+    source={source}
+    selectedPageId={selectedPageId}
+    onSelect={setSelectedPageId}
+    view={view}
+    onViewChange={setView}
+    toolbarEnd={<Button>Importers</Button>}
+    flush
+  />
+  ```
+
+- Added `McpAppHostProvider` to `@mastra/playground-ui/domains/mcps`, so chat hosts can extend the MCP Apps shown in tool cards. A host can add its own keys to each app's host context, and receive each app's raw model context updates along with the app they came from. Host context changes reach the running app without reloading it. Without the provider, MCP Apps work as before. ([#29488](https://github.com/mastra-ai/mastra/pull/29488))
+
+  ```tsx
+  import { McpAppHostProvider } from '@mastra/playground-ui/domains/mcps';
+
+  <McpAppHostProvider
+    value={{
+      hostContext: app => ({ 'my-host/flag': true }),
+      onModelContext: (app, { structuredContent }) => console.log(app.toolCallId, structuredContent),
+    }}
+  >
+    {chat}
+  </McpAppHostProvider>;
+  ```
+
+### Patch Changes
+
+- Fixed chat messages showing raw MCP App context. When a user interacted with an MCP App (for example, drilling into a dashboard chart), the context the app sent to the model appeared in the user's message bubble, the conversation timeline, and copied text. It is now hidden from the UI and still sent to the model. ([#29500](https://github.com/mastra-ai/mastra/pull/29500))
+
+- MCP Apps in Studio now get a JSON-RPC invalid-params error (`-32602`) when they call a tool the app's MCP server doesn't have or keeps for the model. That's the same error an MCP server gives for an unknown tool, so apps can spot a missing tool the same way whichever host they run in. Before, Studio threw a generic internal error. ([#29491](https://github.com/mastra-ai/mastra/pull/29491))
+
+- Added widget pinning to the dashboard app over standard MCP Apps messages, and a `useMcpAppHost` hook for React hosts. ([#29488](https://github.com/mastra-ai/mastra/pull/29488))
+
+  The host sets `mastra.ai/dashboard-pinned-widgets` in its host context to the ids of the widgets it has pinned and advertises `updateModelContext.structuredContent`; each widget then shows a pin button. When the user clicks one, the app sends `ui/update-model-context` with the full list of widgets the user wants pinned under the same key in `structuredContent`. Each entry is `{ widget, scope, defaults? }`; parse it with `dashboardPinnedWidgetsSchema`. The host echoes the update's `mastra.ai/dashboard-pin-request` number back in its host context, so the app knows a declined pin was answered. Pins and drilldowns share one model context, so neither erases the other.
+
+  **Breaking:** the `mastra.ai/dashboard-widget-pin` notification is gone, along with the `DASHBOARD_WIDGET_PIN_NOTIFICATION` and `dashboardWidgetPinNotificationParamsSchema` exports. Hosts that handled it now read the pinned list from `ui/update-model-context` instead.
+
+  ```ts
+  // Before
+  bridge.fallbackNotificationHandler = async ({ method, params }) => {
+    if (method !== DASHBOARD_WIDGET_PIN_NOTIFICATION) return;
+    const pin = dashboardWidgetPinNotificationParamsSchema.parse(params);
+  };
+
+  // After
+  bridge.onupdatemodelcontext = async ({ structuredContent }) => {
+    const pinned = dashboardPinnedWidgetsSchema.safeParse(structuredContent?.[DASHBOARD_PINNED_WIDGETS_CONTEXT_KEY]);
+    return {};
+  };
+  ```
+
+  React hosts built on `@mastra/playground-ui` can use `useMcpAppHost` from the new `@mastra/mcp-apps-components/host` subpath to wire pinning without handling the messages themselves. The subpath doesn't include the app's HTML.
+
+  ```tsx
+  import { McpAppHostProvider } from '@mastra/playground-ui/domains/mcps';
+  import { useMcpAppHost } from '@mastra/mcp-apps-components/host';
+
+  const host = useMcpAppHost({ dashboardPins: { pinnedIds, onPinnedChange } });
+  <McpAppHostProvider value={host}>{chat}</McpAppHostProvider>;
+  ```
+
+- Updated dependencies [[`a0068a9`](https://github.com/mastra-ai/mastra/commit/a0068a9ad1fb0a31ae60a07ecbeae41a32ea4081), [`8960f55`](https://github.com/mastra-ai/mastra/commit/8960f55dec7ebf39b460ee8664509d2924065b86), [`cd369c3`](https://github.com/mastra-ai/mastra/commit/cd369c334cf5af81597d7d61e7419b390f92365b), [`f94beac`](https://github.com/mastra-ai/mastra/commit/f94beac86288cb94e2973c9ed492c8f0d68b919d), [`f7320ab`](https://github.com/mastra-ai/mastra/commit/f7320abd205aa865e3ae467b7bf82373af30a6aa)]:
+  - @mastra/core@1.83.0-alpha.1
+  - @mastra/client-js@1.60.0-alpha.1
+  - @mastra/react@1.15.0-alpha.1
+
 ## 69.0.0-alpha.0
 
 ### Minor Changes

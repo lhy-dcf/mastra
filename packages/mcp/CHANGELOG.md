@@ -1,5 +1,37 @@
 # @mastra/mcp
 
+## 2.9.0-alpha.1
+
+### Patch Changes
+
+- Fixed MCP tool calls running twice on the server after a dropped connection (#28415). ([#29492](https://github.com/mastra-ai/mastra/pull/29492))
+
+  When the connection fails after a tool call was sent, the server may already have run it. The client now handles this case as follows:
+
+  - Tools the server marks `readOnlyHint` or `idempotentHint` are retried once, as before.
+  - Other tools fail with `MCP_CLIENT_TOOL_CALL_OUTCOME_UNKNOWN` and are not sent again. This includes a request sent on a connection the server had just closed, which used to be retried silently.
+  - Other calls running on the same server are no longer aborted and resent.
+  - Calls that never reached the server, such as a refused connection, still reconnect and retry.
+
+  Check the server state before retrying a call that failed this way:
+
+  ```ts
+  import { MastraError } from '@mastra/core/error';
+
+  try {
+    await tools.createTicket.execute(input);
+  } catch (error) {
+    if (error instanceof MastraError && error.id === 'MCP_CLIENT_TOOL_CALL_OUTCOME_UNKNOWN') {
+      // The ticket may exist. Look it up before creating it again.
+    }
+  }
+  ```
+
+- Fixed `MCPServer` rejecting `resources/read` for URIs built from an advertised resource template. A URI that matches one of the caller's `resourceTemplates` is now passed to `getResourceContent` and returned with the template's `mimeType` and `_meta`, instead of failing with `Resource not found`. Listed resources still take precedence. Fixes [#29455](https://github.com/mastra-ai/mastra/issues/29455). ([#29493](https://github.com/mastra-ai/mastra/pull/29493))
+
+- Updated dependencies [[`a0068a9`](https://github.com/mastra-ai/mastra/commit/a0068a9ad1fb0a31ae60a07ecbeae41a32ea4081), [`8960f55`](https://github.com/mastra-ai/mastra/commit/8960f55dec7ebf39b460ee8664509d2924065b86), [`cd369c3`](https://github.com/mastra-ai/mastra/commit/cd369c334cf5af81597d7d61e7419b390f92365b), [`f94beac`](https://github.com/mastra-ai/mastra/commit/f94beac86288cb94e2973c9ed492c8f0d68b919d), [`f7320ab`](https://github.com/mastra-ai/mastra/commit/f7320abd205aa865e3ae467b7bf82373af30a6aa)]:
+  - @mastra/core@1.83.0-alpha.1
+
 ## 2.9.0-alpha.0
 
 ### Minor Changes

@@ -1,5 +1,108 @@
 # @mastra/mcp-apps-components
 
+## 0.1.0-alpha.1
+
+### Minor Changes
+
+- Replaced the 11 observability tools with one data tool. Register `dashboardDataTool` next to the dashboard app instead of spreading `observabilityAppTools`. The `@mastra/mcp-apps-components/observability-tools` entry point is removed. ([#29491](https://github.com/mastra-ai/mastra/pull/29491))
+
+  **Before**
+
+  ```ts
+  import { dashboardRendererApp } from '@mastra/mcp-apps-components/dashboard-renderer';
+  import { observabilityAppTools } from '@mastra/mcp-apps-components/observability-tools';
+
+  new MCPServer({
+    // ...
+    appResources: { 'ui://mastra/dashboard': dashboardRendererApp() },
+    tools: { showDashboard, ...observabilityAppTools },
+  });
+  ```
+
+  **After**
+
+  ```ts
+  import { dashboardDataTool } from '@mastra/mcp-apps-components/dashboard-data-tool';
+  import { dashboardRendererApp } from '@mastra/mcp-apps-components/dashboard-renderer';
+
+  new MCPServer({
+    // ...
+    appResources: { 'ui://mastra/dashboard': dashboardRendererApp() },
+    tools: { showDashboard, dashboardDataTool },
+  });
+  ```
+
+  As before, the tool runs each observability route as the signed-in caller, with the route's own validation and permission checks, and agents don't see it.
+
+  **Clearer errors in dashboard widgets**
+
+  - If `dashboardDataTool` isn't registered, widgets say so and show how to register it, instead of retrying and failing with a generic error.
+  - Invalid requests now fail once with the route's error message, instead of being retried and showing a raw JSON error.
+
+  `@mastra/server` is now an optional peer dependency. Only `@mastra/mcp-apps-components/dashboard-data-tool` needs it.
+
+  **Answering the reads yourself**
+
+  Hosts that answer the dashboard's reads themselves can import the contract from `@mastra/mcp-apps-components/dashboard-renderer` without installing `@mastra/server`: `DASHBOARD_DATA_TOOL_NAME`, `DASHBOARD_DATA_OPERATIONS`, `DASHBOARD_DATA_REQUESTS`, `dashboardDataInputSchema`, and `dashboardDataOutputSchema`.
+
+  Set `projectId` in the dashboard's tool result to tell such a host which project to read. The app sends it as `projectId` on every data tool call:
+
+  ```ts
+  execute: async () => ({ definition, scope: 'project' as const, projectId: 'proj_123' }),
+  ```
+
+- Added widget pinning to the dashboard app over standard MCP Apps messages, and a `useMcpAppHost` hook for React hosts. ([#29488](https://github.com/mastra-ai/mastra/pull/29488))
+
+  The host sets `mastra.ai/dashboard-pinned-widgets` in its host context to the ids of the widgets it has pinned and advertises `updateModelContext.structuredContent`; each widget then shows a pin button. When the user clicks one, the app sends `ui/update-model-context` with the full list of widgets the user wants pinned under the same key in `structuredContent`. Each entry is `{ widget, scope, defaults? }`; parse it with `dashboardPinnedWidgetsSchema`. The host echoes the update's `mastra.ai/dashboard-pin-request` number back in its host context, so the app knows a declined pin was answered. Pins and drilldowns share one model context, so neither erases the other.
+
+  **Breaking:** the `mastra.ai/dashboard-widget-pin` notification is gone, along with the `DASHBOARD_WIDGET_PIN_NOTIFICATION` and `dashboardWidgetPinNotificationParamsSchema` exports. Hosts that handled it now read the pinned list from `ui/update-model-context` instead.
+
+  ```ts
+  // Before
+  bridge.fallbackNotificationHandler = async ({ method, params }) => {
+    if (method !== DASHBOARD_WIDGET_PIN_NOTIFICATION) return;
+    const pin = dashboardWidgetPinNotificationParamsSchema.parse(params);
+  };
+
+  // After
+  bridge.onupdatemodelcontext = async ({ structuredContent }) => {
+    const pinned = dashboardPinnedWidgetsSchema.safeParse(structuredContent?.[DASHBOARD_PINNED_WIDGETS_CONTEXT_KEY]);
+    return {};
+  };
+  ```
+
+  React hosts built on `@mastra/playground-ui` can use `useMcpAppHost` from the new `@mastra/mcp-apps-components/host` subpath to wire pinning without handling the messages themselves. The subpath doesn't include the app's HTML.
+
+  ```tsx
+  import { McpAppHostProvider } from '@mastra/playground-ui/domains/mcps';
+  import { useMcpAppHost } from '@mastra/mcp-apps-components/host';
+
+  const host = useMcpAppHost({ dashboardPins: { pinnedIds, onPinnedChange } });
+  <McpAppHostProvider value={host}>{chat}</McpAppHostProvider>;
+  ```
+
+### Patch Changes
+
+- Added `McpAppHostProvider` to `@mastra/playground-ui/domains/mcps`, so chat hosts can extend the MCP Apps shown in tool cards. A host can add its own keys to each app's host context, and receive each app's raw model context updates along with the app they came from. Host context changes reach the running app without reloading it. Without the provider, MCP Apps work as before. ([#29488](https://github.com/mastra-ai/mastra/pull/29488))
+
+  ```tsx
+  import { McpAppHostProvider } from '@mastra/playground-ui/domains/mcps';
+
+  <McpAppHostProvider
+    value={{
+      hostContext: app => ({ 'my-host/flag': true }),
+      onModelContext: (app, { structuredContent }) => console.log(app.toolCallId, structuredContent),
+    }}
+  >
+    {chat}
+  </McpAppHostProvider>;
+  ```
+
+- Updated dependencies [[`a0068a9`](https://github.com/mastra-ai/mastra/commit/a0068a9ad1fb0a31ae60a07ecbeae41a32ea4081), [`3cf319b`](https://github.com/mastra-ai/mastra/commit/3cf319b5af74aeebb1b70bd29ec539fbd2af4bb8), [`8960f55`](https://github.com/mastra-ai/mastra/commit/8960f55dec7ebf39b460ee8664509d2924065b86), [`cd369c3`](https://github.com/mastra-ai/mastra/commit/cd369c334cf5af81597d7d61e7419b390f92365b), [`f94beac`](https://github.com/mastra-ai/mastra/commit/f94beac86288cb94e2973c9ed492c8f0d68b919d), [`544224c`](https://github.com/mastra-ai/mastra/commit/544224c38f61d08a0b9952d202366fb3c6cc5bd9), [`f7320ab`](https://github.com/mastra-ai/mastra/commit/f7320abd205aa865e3ae467b7bf82373af30a6aa)]:
+  - @mastra/core@1.83.0-alpha.1
+  - @mastra/server@1.83.0-alpha.1
+  - @mastra/mcp@2.9.0-alpha.1
+
 ## 0.1.0-alpha.0
 
 ### Minor Changes
